@@ -16,17 +16,15 @@ extension SourceFileSyntax {
     }
 }
 
-extension FunctionDeclSyntax {
-    /// Scope of this function.
-    var scope: FunctionScope {
-        FunctionScope(self)
-    }
-}
-
-extension IfExprSyntax {
-    /// Scope of this if expression.
-    var scope: IfExpressionScope {
-        IfExpressionScope(self)
+extension CodeBlockSyntax {
+    var scope: BlockScope? {
+        if let functionDeclaration = parent?.as(FunctionDeclSyntax.self) {
+            return FunctionScope(functionDeclaration)
+        } else if let ifExpression = parent?.as(IfExprSyntax.self) {
+            return IfExpressionScope(ifExpression)
+        } else {
+            return nil
+        }
     }
 }
 
@@ -45,32 +43,12 @@ extension DeclReferenceExprSyntax {
     private func getParentScope(syntax: Syntax?) -> Scope? {
         guard let syntax else { return nil }
         
-        if let scope = syntax.as(FunctionDeclSyntax.self)?.scope {
-            return scope
-        } else if let scope = syntax.as(IfExprSyntax.self)?.scope {
-            return scope
-        } else if let scope = syntax.as(SourceFileSyntax.self)?.scope {
-            return scope
+        if let blockScope = syntax.as(CodeBlockSyntax.self)?.scope {
+            return blockScope
+        } else if let globalScope = syntax.as(SourceFileSyntax.self)?.scope {
+            return globalScope
         }
         
         return getParentScope(syntax: syntax.parent)
-    }
-}
-
-extension ReturnStmtSyntax {
-    /// Scope this return keyword returns from.
-    var returnsFrom: Scope? {
-        return returnsFrom(syntax: parent)
-    }
-    
-    /// Recursively finds the scope this return keyword returns from
-    private func returnsFrom(syntax: Syntax?) -> Scope? {
-        guard let syntax else { return nil }
-        
-        if let scope = syntax.as(FunctionDeclSyntax.self)?.scope { // Check if the current looked up syntax is a function declaration.
-            return scope
-        }
-        
-        return returnsFrom(syntax: syntax.parent) // Syntax not a function declaration. Continue up-search in the tree.
     }
 }

@@ -12,7 +12,7 @@ The main goal of this implementation is to modularize the API for easier future 
 Simply clone the repository and run the swift package with `swift run` command or Xcode. The console should print for each reference it's declaration. To change the input code, adjust the `content` variable in the `main()` function of the `Parse` class.
 
 ## Demo implementation
-This demo allows for looking up declarations of variables referenced in `DeclReferenceExprSyntax` (the class got extended with two properties `declaration` and `parentScope`). Additionally it's possible to look up all the variables in scope. In this demo, it's available through the property `scope` in `SourceFileSyntax`, `FunctionDeclSyntax` and `IfExprSyntax`.
+This demo allows for looking up declarations of variables referenced in `DeclReferenceExprSyntax` and scopes of the references through two new properties: `declaration` and `parentScope`. Scopes within braces are represented in AST by `CodeBlockSyntax`. In this demo, this class got extended with one additional property `scope` of type `BlockScope`. It contains all information about the variables available and introduced in the scope. Additionally there's `GlobalScope` associated with `SourceFileSyntax`.
 
 ### struct `Declaration`
 Represents a declaration in the source code. It consists of two properties:
@@ -41,5 +41,5 @@ Are example subclasses of `BlockScope`. They both have `parameters` and `optiona
 ## Introducing new scopes
 On top of this foundation, it should be fairly straight forward to implement new scope types. Doing such would require:
 1. Subclassing `BlockScope`
-2. overriding `introducedVariables()` and returning the introduced variables.
-3.  Updating `getParent(syntax:)` and `getParentScope(syntax:)` of `BlockScope` and `DeclReferenceExprSyntax` respectively
+2. Overriding `introducedVariables()` and returning the introduced variables.
+3. Updating `scope` computed property of `CodeBlockSyntax`

@@ -88,12 +88,10 @@ class BlockScope: Scope {
     private func getParent(syntax: Syntax?) -> Scope? {
         guard let syntax else { return nil }
         
-        if let scope = syntax.as(FunctionDeclSyntax.self)?.scope {
-            return scope
-        } else if let scope = syntax.as(IfExprSyntax.self)?.scope {
-            return scope
-        } else if let scope = syntax.as(SourceFileSyntax.self)?.scope {
-            return scope
+        if let blockScope = syntax.as(CodeBlockSyntax.self)?.scope {
+            return blockScope
+        } else if let globalScope = syntax.as(SourceFileSyntax.self)?.scope {
+            return globalScope
         }
         
         return getParent(syntax: syntax.parent)

@@ -14,12 +14,14 @@ struct Parse {
     static func main() {
         let content = 
         """
+            let c = 0
+        
             func f(a: Int, b: Int?) -> Int {
                 if let b = b {
-                    return a + c
+                    return b + c
                 }
             
-                return a
+                return a + b
             }
         """
 
@@ -33,7 +35,7 @@ struct Parse {
 final class DeclarationReferenceVisitor: SyntaxVisitor {
     override func visit(_ node: DeclReferenceExprSyntax) -> SyntaxVisitorContinueKind {
         print("Variable: \(node.baseName)\nRefers to:")
-        print(node.declaration?.syntax)
+        print(node.declaration?.syntax.debugDescription ?? "Not declared")
         print("---------------------")
         return super.visit(node)
     }
