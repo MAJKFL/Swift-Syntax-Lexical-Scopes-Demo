@@ -39,11 +39,6 @@ class GlobalScope: Scope {
     /// Global scope doesn't have a parent.
     var parent: Scope? = nil
     
-    /// Initializes a global scope.
-    init(_ sourceFileSyntax: SourceFileSyntax) {
-        self.sourceFileSyntax = sourceFileSyntax
-    }
-    
     /// Declarations made in the body of the global scope.
     var localDeclarations: [Declaration] {
         sourceFileSyntax.statements.compactMap { statement in
@@ -53,6 +48,11 @@ class GlobalScope: Scope {
                 return nil
             }
         }
+    }
+    
+    /// Initializes a global scope.
+    init(_ sourceFileSyntax: SourceFileSyntax) {
+        self.sourceFileSyntax = sourceFileSyntax
     }
     
     /// Returns all the declarations available in the scope berore the specified absolute position. Sorted by position.
@@ -70,31 +70,9 @@ class BlockScope: Scope {
     /// Code block represented by this scope.
     var codeBlockSyntax: CodeBlockSyntax?
     
-    /// Syntax this code block is part of. Could be function declaration, if expression etc.
-    var scopeSyntax: Syntax?
-    
     /// Parent of this scope.
     var parent: Scope? {
-        getParent(syntax: scopeSyntax?.parent)
-    }
-    
-    /// Initializes a block scope.
-    init(codeBlockSyntax: CodeBlockSyntax?, scopeSyntax: some SyntaxProtocol) {
-        self.codeBlockSyntax = codeBlockSyntax
-        self.scopeSyntax = Syntax(scopeSyntax)
-    }
-    
-    /// Recursively finds parent of this scope.
-    private func getParent(syntax: Syntax?) -> Scope? {
-        guard let syntax else { return nil }
-        
-        if let blockScope = syntax.as(CodeBlockSyntax.self)?.scope {
-            return blockScope
-        } else if let globalScope = syntax.as(SourceFileSyntax.self)?.scope {
-            return globalScope
-        }
-        
-        return getParent(syntax: syntax.parent)
+        getParent(syntax: codeBlockSyntax?.parent)
     }
     
     /// Variables passed from the parent scope and any declarations made before it's execution like e.g. funciton parameters..
@@ -115,6 +93,24 @@ class BlockScope: Scope {
                 return nil
             }
         }
+    }
+    
+    /// Initializes a block scope.
+    init(codeBlockSyntax: CodeBlockSyntax?) {
+        self.codeBlockSyntax = codeBlockSyntax
+    }
+    
+    /// Recursively finds parent of this scope.
+    private func getParent(syntax: Syntax?) -> Scope? {
+        guard let syntax else { return nil }
+        
+        if let blockScope = syntax.as(CodeBlockSyntax.self)?.scope {
+            return blockScope
+        } else if let globalScope = syntax.as(SourceFileSyntax.self)?.scope {
+            return globalScope
+        }
+        
+        return getParent(syntax: syntax.parent)
     }
     
     /// Returns all the declarations available in the scope berore the specified absolute position. Sorted by position.
@@ -138,15 +134,15 @@ class FunctionScope: BlockScope {
     /// Syntax of the function.
     var functionDeclarationSyntax: FunctionDeclSyntax
     
-    /// Initializes a new function scope.
-    init(_ functionDeclarationSyntax: FunctionDeclSyntax) {
-        self.functionDeclarationSyntax = functionDeclarationSyntax
-        super.init(codeBlockSyntax: functionDeclarationSyntax.body, scopeSyntax: functionDeclarationSyntax)
-    }
-    
     /// Parameters introduced in the function signature.
     var parameters: [Declaration] {
         functionDeclarationSyntax.signature.parameterClause.parameters.map({ Declaration($0) })
+    }
+    
+    /// Initializes a new function scope.
+    init(_ functionDeclarationSyntax: FunctionDeclSyntax) {
+        self.functionDeclarationSyntax = functionDeclarationSyntax
+        super.init(codeBlockSyntax: functionDeclarationSyntax.body)
     }
     
     /// Returns variables introduced by this scope (parameters).
@@ -160,12 +156,6 @@ class IfExpressionScope: BlockScope {
     /// Syntax of the expression.
     var ifExpression: IfExprSyntax
     
-    /// Initializes a new if expression scope.
-    init(_ ifExpression: IfExprSyntax) {
-        self.ifExpression = ifExpression
-        super.init(codeBlockSyntax: ifExpression.body, scopeSyntax: ifExpression)
-    }
-    
     /// Optional bindings introduced by the if expression.
     var optionalBindings: [Declaration] {
         ifExpression.conditions
@@ -174,6 +164,12 @@ class IfExpressionScope: BlockScope {
                 
                 return Declaration(condition)
             }
+    }
+    
+    /// Initializes a new if expression scope.
+    init(_ ifExpression: IfExprSyntax) {
+        self.ifExpression = ifExpression
+        super.init(codeBlockSyntax: ifExpression.body)
     }
     
     /// Returns variables introduced by this scope (optional bindings).
