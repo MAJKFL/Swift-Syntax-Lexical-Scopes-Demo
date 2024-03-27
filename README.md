@@ -1,7 +1,7 @@
 # Lexical Scopes Demo
 This package demonstrates how lexical scopes could be implemented to Swift Syntax. After running, it prints declaration each `DeclReferenceExprSyntax` refers to in the input source code.
 Right now, the implementation works with:
-- Variable declarations (`VariableDeclSyntax`, not yet with tuples)
+- Variable declarations (`VariableDeclSyntax`)
 - If expression optional bindings (`OptionalBindingConditionSyntax`)
 - Function parameters (`FunctionParameterSyntax`)
 
@@ -12,34 +12,36 @@ The main goal of this implementation is to modularize the API for easier future 
 Simply clone the repository and run the swift package with `swift run` command or Xcode. The console should print for each reference it's declaration. To change the input code, adjust the `content` variable in the `main()` function of the `Parse` class.
 
 ## Demo implementation
-This demo allows for looking up declarations of variables referenced in `DeclReferenceExprSyntax` and scopes of the references through two new properties: `declaration` and `parentScope`. Scopes within braces are represented in AST by `CodeBlockSyntax`. In this demo, this class got extended with one additional property `scope` of type `BlockScope`. It contains all information about the variables available and introduced in the scope. Additionally there's `GlobalScope` associated with `SourceFileSyntax`.
+This demo allows for looking up declarations of variables referenced in `DeclReferenceExprSyntax` and scopes of the references through two new properties: `declaration` and `parentScope`. In this demo, `CodeBlockSyntax` got extended with one additional property `scope` of type `BlockScope`. It contains all information about the variables available and introduced in the scope. Additionally there's `GlobalScope` associated with `SourceFileSyntax`.
 
 ### struct `Declaration`
-Represents a declaration in the source code. It consists of two properties:
+Represents a declaration in the source code. Serves as an abstraction over `Syntax` for easier name lookup. It consists of three properties and two methods:
 - `syntax` - holding the AST syntax representation of the declaration.
-- `name` - holding the name of the declaration.
+- `names` - containing all identifiers of the declaration.
+- `position` - holding the `AbsolutePosition` of the `syntax`
+- `refersTo(name:)` - checking if passed name refers to one of the declarations within the syntax
+- `refersTo(names:)` - checking whether one of the passed names refers to one of the names within the syntax 
 
 ### protocol `Scope`
 It's a general abstraction of any scope available in swift language. Each scope has:
 - `parent` - parent scope of the scope.
-- `getAllDeclarations(before:)` - returns all declarations available before specified `AbsolutePosition`.
-- `getDeclaration(of:)` - returns the declaration a specified `DeclReferenceExprSyntax` refers to.
+- `introducedVariables` - is a class that should be overriden after subclassing. Returns all variable declarations introduced by the scope like e.g. function parameters, optional bindings, newValue in a getter etc. Used for determining variable shadowing.
+- `getAllDecl(before:)` - returns all declarations available before specified `AbsolutePosition`.
+- `getDecl(of:)` - returns the declaration a specified `DeclReferenceExprSyntax` refers to.
 
 ### class `GlobalScope`
-It's always the root of the scope tree. Represented and associated in the AST by `SourceFileSyntax`. Implements the scope protocol. It has one additional property:
-- `localDeclarations` - contains all declarations in inside the global scope.
+It's always the root of the scope tree. Represented and associated in the AST by `SourceFileSyntax`. Implements the scope protocol. It doesn't have any additional properties.
 
-### class `BlockScope`
-Represents the scope within brackets. Represented and associated in the AST by `CodeBlockSyntax`. Should be subclassed before use. It has several additional properties and methods:
+### protocol `BlockScope`
+Represents the scope within brackets where order of the declarations matters. Represented and associated in the AST by `CodeBlockSyntax`. Should be subclassed before use. It has several additional properties and methods:
 - `startDeclarations` - contains all declarations passed from the parent scope.
 - `localDeclarations` - contains all declarations in the represented scope.
-- `introducedVariables()` - is a class that should be overriden after subclassing. Returns all variable declarations introduced by the scope like e.g. function parameters, optional bindings, newValue in a getter etc. Used for determining variable shadowing.
 
 ### class `FunctionScope` and `IfExpressionScope`
-Are example subclasses of `BlockScope`. They both have `parameters` and `optionalBindings` properties respectively, each holding the variables introduced by the scope. Both of the classes override the `introducedVariables()` method and return the introduced variables.
+Are example implementation of `BlockScope` protocol. They both fill in `introducedVariables` with the variables introduced by the scope.
 
 ## Introducing new scopes
 On top of this foundation, it should be fairly straight forward to implement new scope types. Doing such would require:
 1. Subclassing `BlockScope`
-2. Overriding `introducedVariables()` and returning the introduced variables.
+2. Filling in `introducedVariables` accrodingly
 3. Updating `scope` computed property of `CodeBlockSyntax`

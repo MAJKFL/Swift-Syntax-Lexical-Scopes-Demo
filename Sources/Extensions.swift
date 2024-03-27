@@ -17,7 +17,7 @@ extension SourceFileSyntax {
 }
 
 extension CodeBlockSyntax {
-    var scope: BlockScope? {
+    var scope: CodeBlockScope? {
         if let functionDeclaration = parent?.as(FunctionDeclSyntax.self) {
             return FunctionScope(functionDeclaration)
         } else if let ifExpression = parent?.as(IfExprSyntax.self) {
@@ -31,7 +31,7 @@ extension CodeBlockSyntax {
 extension DeclReferenceExprSyntax {
     /// Variable declaration this reference refers to.
     var declaration: Declaration? {
-        return parentScope?.getDeclaration(of: self)
+        return parentScope?.getDecl(of: self)
     }
     
     /// Scope this reference references.

@@ -14,25 +14,31 @@ protocol Scope {
     /// Parent scope
     var parent: Scope? { get }
     
+    /// Variables introduced by this scope. Should be overriden by subclass. Could be function parameters, optional bindings, implicit newValue in a setter etc.
+    var introducedVariables: [Declaration] { get }
+    
     /// Returns all the declarations available in the scope berore the specified absolute position. Sorted by position.
-    func getAllDeclarations(before position: AbsolutePosition) -> [Declaration]
+    func getAllDecl(before position: AbsolutePosition) -> [Declaration]
     
     /// Returns the declaration, the reference refers to.
-    func getDeclaration(of declarationReference: DeclReferenceExprSyntax) -> Declaration?
+    func getDecl(of declarationReference: DeclReferenceExprSyntax) -> Declaration?
 }
 
 extension Scope {
     /// Returns the declaration, the reference refers to.
-    func getDeclaration(of declarationReference: DeclReferenceExprSyntax) -> Declaration? {
-        return getAllDeclarations(before: declarationReference.position)
+    func getDecl(of declarationReference: DeclReferenceExprSyntax) -> Declaration? {
+        return getAllDecl(before: declarationReference.position)
             .first { declaration in
-                declaration.name == declarationReference.baseName.text
+                declaration.refersTo(name: declarationReference.baseName.text)
             }
     }
 }
 
 /// Global scope. Root of all other scopes.
 class GlobalScope: Scope {
+    /// No introduced variables before global scope.
+    var introducedVariables: [Declaration] = []
+    
     /// Source file this scope represents.
     let sourceFileSyntax: SourceFileSyntax
     
@@ -56,21 +62,30 @@ class GlobalScope: Scope {
     }
     
     /// Returns all the declarations available in the scope berore the specified absolute position. Sorted by position.
-    func getAllDeclarations(before position: AbsolutePosition) -> [Declaration] {
+    func getAllDecl(before position: AbsolutePosition) -> [Declaration] {
         return localDeclarations
             .filter { declaration in
                 declaration.position < position
             }
             .sorted(by: { $0.position < $1.position })
     }
+    
 }
 
 /// Represents scope within brackets. Should be further subclassed to provide specific functionality
-class BlockScope: Scope {
+protocol CodeBlockScope: Scope {
     /// Code block represented by this scope.
-    var codeBlockSyntax: CodeBlockSyntax?
+    var codeBlockSyntax: CodeBlockSyntax? { get }
     
-    /// Parent of this scope.
+    /// Variables passed from the parent scope and any declarations made before it's execution like e.g. funciton parameters..
+    var startDeclarations: [Declaration] { get }
+    
+    /// Variables declared inside the scope.
+    var localDelcarations: [Declaration] { get }
+}
+
+extension CodeBlockScope {
+    /// Parent of the scope.
     var parent: Scope? {
         getParent(syntax: codeBlockSyntax?.parent)
     }
@@ -79,10 +94,10 @@ class BlockScope: Scope {
     var startDeclarations: [Declaration] {
         guard let codeBlockSyntax, let parent else { return [] }
         
-        return parent.getAllDeclarations(before: codeBlockSyntax.position)
+        return parent.getAllDecl(before: codeBlockSyntax.position)
     }
     
-    /// Variables declared inside the scope.
+    /// Declarations made within the scope.
     var localDelcarations: [Declaration] {
         guard let codeBlockSyntax else { return [] }
         
@@ -93,11 +108,6 @@ class BlockScope: Scope {
                 return nil
             }
         }
-    }
-    
-    /// Initializes a block scope.
-    init(codeBlockSyntax: CodeBlockSyntax?) {
-        self.codeBlockSyntax = codeBlockSyntax
     }
     
     /// Recursively finds parent of this scope.
@@ -114,50 +124,46 @@ class BlockScope: Scope {
     }
     
     /// Returns all the declarations available in the scope berore the specified absolute position. Sorted by position.
-    func getAllDeclarations(before position: AbsolutePosition) -> [Declaration] {
+    func getAllDecl(before position: AbsolutePosition) -> [Declaration] {
         return (startDeclarations.filter({ startDeclaration in
-            !introducedVariables().contains(where: { parameter in
-                startDeclaration.name == parameter.name
+            !introducedVariables.contains(where: { parameter in
+                startDeclaration.refersTo(names: parameter.names)
             })
-        }) + introducedVariables() +
+        }) + introducedVariables +
             localDelcarations.filter({ $0.position < position })).sorted(by: { $0.position < $1.position })
-    }
-    
-    /// Variables introduced by this scope. Should be overriden by subclass. Could be function parameters, optional bindings, implicit newValue in a setter etc.
-    func introducedVariables() -> [Declaration] {
-        []
     }
 }
 
 /// Scope inside of a function.
-class FunctionScope: BlockScope {
+class FunctionScope: CodeBlockScope {
+    /// Syntax of the scope.
+    var codeBlockSyntax: CodeBlockSyntax?
+    
     /// Syntax of the function.
     var functionDeclarationSyntax: FunctionDeclSyntax
     
     /// Parameters introduced in the function signature.
-    var parameters: [Declaration] {
+    var introducedVariables: [Declaration] {
         functionDeclarationSyntax.signature.parameterClause.parameters.map({ Declaration($0) })
     }
     
     /// Initializes a new function scope.
     init(_ functionDeclarationSyntax: FunctionDeclSyntax) {
+        self.codeBlockSyntax = functionDeclarationSyntax.body
         self.functionDeclarationSyntax = functionDeclarationSyntax
-        super.init(codeBlockSyntax: functionDeclarationSyntax.body)
-    }
-    
-    /// Returns variables introduced by this scope (parameters).
-    override func introducedVariables() -> [Declaration] {
-        parameters
     }
 }
 
 /// Scope inside of an if expression.
-class IfExpressionScope: BlockScope {
+class IfExpressionScope: CodeBlockScope {
+    /// Syntax of the scope.
+    var codeBlockSyntax: CodeBlockSyntax?
+    
     /// Syntax of the expression.
     var ifExpression: IfExprSyntax
     
     /// Optional bindings introduced by the if expression.
-    var optionalBindings: [Declaration] {
+    var introducedVariables: [Declaration] {
         ifExpression.conditions
             .compactMap { conditionSyntax in
                 guard let condition = conditionSyntax.condition.as(OptionalBindingConditionSyntax.self) else { return nil }
@@ -169,12 +175,7 @@ class IfExpressionScope: BlockScope {
     /// Initializes a new if expression scope.
     init(_ ifExpression: IfExprSyntax) {
         self.ifExpression = ifExpression
-        super.init(codeBlockSyntax: ifExpression.body)
-    }
-    
-    /// Returns variables introduced by this scope (optional bindings).
-    override func introducedVariables() -> [Declaration] {
-        optionalBindings
+        self.codeBlockSyntax = ifExpression.body
     }
 }
 
@@ -183,12 +184,12 @@ struct Declaration {
     /// Syntax that represents this declaration.
     let syntax: Syntax
     /// Name of the variable.
-    let name: String
+    let names: [String]
     
     /// Creates a new declaration for function parameter.
     init(_ parameter: FunctionParameterSyntax) {
         self.syntax = Syntax(parameter)
-        self.name = parameter.secondName?.text ?? parameter.firstName.text
+        self.names = [parameter.secondName?.text ?? parameter.firstName.text]
     }
     
     /// Creates a new declaration for optional binding.
@@ -196,22 +197,32 @@ struct Declaration {
         guard let name = optionalBinding.pattern.as(IdentifierPatternSyntax.self)?.identifier.text else { return nil }
         
         self.syntax = Syntax(optionalBinding)
-        self.name = name
+        self.names = [name]
     }
     
     /// Creates a new declaration for variable declaration.
-    init?(_ variableDeclaration: VariableDeclSyntax) { // Won't work with tuples as for now
-        guard let name = variableDeclaration.bindings
+    init?(_ variableDeclaration: VariableDeclSyntax) {
+        self.syntax = Syntax(variableDeclaration)
+        self.names = variableDeclaration.bindings
             .compactMap({ patternBinding in
                 (patternBinding as PatternBindingSyntax).pattern.as(IdentifierPatternSyntax.self)?.identifier.text
-            }).first else { return nil }
-        
-        self.syntax = Syntax(variableDeclaration)
-        self.name = name
+            })
     }
     
     /// Absolute position of this declaration.
     var position: AbsolutePosition {
         syntax.position
+    }
+    
+    /// Name comparison
+    func refersTo(name: String) -> Bool {
+        return names.contains(name)
+    }
+    
+    /// Name comparison for tuples
+    func refersTo(names: [String]) -> Bool {
+        return self.names.allSatisfy { name in
+            names.contains(name)
+        }
     }
 }
